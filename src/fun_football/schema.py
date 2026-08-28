@@ -57,6 +57,7 @@ class Market:
     source: str
     source_market_id: str | None = None
     is_live: bool = False
+    source_name: str | None = None
 
     def __post_init__(self) -> None:
         for value, name in ((self.market_id, "market_id"), (self.event_id, "event_id"),

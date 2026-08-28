@@ -58,19 +58,27 @@ def _dashboard(sport_key: str) -> str:
         quotes = quotes_by_event[event.event_id]
         outcomes = defaultdict(list)
         bookmakers = set()
+        comparison = defaultdict(dict)
         for market, quote in quotes:
             outcomes[quote.outcome].append(quote.price)
-            bookmakers.add(market.source_market_id.split(":", 1)[0] if market.source_market_id else market.source)
+            source_name = market.source_name or (market.source_market_id.split(":", 1)[0] if market.source_market_id else market.source)
+            bookmakers.add(source_name)
+            comparison[quote.outcome][source_name] = quote.price
         outcome_rows = []
+        source_columns = sorted(bookmakers)
         for outcome, prices in sorted(outcomes.items()):
-            values = ", ".join(f"{price:.2f}" for price in sorted(prices))
-            outcome_rows.append(f"<tr><td>{escape(outcome)}</td><td>{values}</td></tr>")
+            source_prices = "".join(
+                f"<td>{comparison[outcome].get(source, ''):.2f}</td>" if source in comparison[outcome] else "<td>—</td>"
+                for source in source_columns
+            )
+            outcome_rows.append(f"<tr><td>{escape(outcome)}</td>{source_prices}</tr>")
+        headers = "".join(f"<th>{escape(source)}</th>" for source in source_columns)
         cards.append(f"""
         <article class="event">
           <div class="event-head"><h2>{escape(event.home_team)} <span>vs</span> {escape(event.away_team)}</h2>
           <p>{_format_time(event.start_time)}</p></div>
           <div class="event-meta"><span>{escape(event.competition)}</span><span>{len(bookmakers)} source(s)</span><span>{len(quotes)} quote(s)</span></div>
-          <table><thead><tr><th>Outcome</th><th>Observed decimal prices</th></tr></thead><tbody>{''.join(outcome_rows)}</tbody></table>
+          <table><caption>Same market and outcome across sources</caption><thead><tr><th>Outcome</th>{headers}</tr></thead><tbody>{''.join(outcome_rows)}</tbody></table>
         </article>""")
 
     error_html = f'<p class="notice error">{escape(error)}</p>' if error else ""
@@ -88,15 +96,17 @@ def _dashboard(sport_key: str) -> str:
   h1 {{ margin:0; font-size:32px; letter-spacing:-.03em; }} h1 small {{ color:var(--accent); font-size:13px; display:block; letter-spacing:.12em; text-transform:uppercase; margin-bottom:8px; }}
   .controls {{ display:flex; gap:10px; align-items:end; }} label {{ color:var(--muted); font-size:12px; display:grid; gap:5px; }} select,button {{ background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:10px 12px; font:inherit; }} button {{ cursor:pointer; background:var(--accent); color:#0d1712; border-color:var(--accent); font-weight:650; }}
   .status {{ border:1px solid var(--line); background:var(--panel); border-radius:12px; padding:16px; margin-bottom:22px; }} .status strong {{ color:var(--accent); }} .status p {{ margin:3px 0 0; color:var(--muted); }} .notice {{ color:var(--warn); }} .error {{ color:#ff9f9f; }}
+  .summary {{ display:flex; gap:10px; flex-wrap:wrap; margin:0 0 22px; }} .summary div {{ min-width:125px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }} .summary b {{ display:block; color:var(--accent); font-size:20px; }} .summary span {{ color:var(--muted); font-size:12px; }}
   .events {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:16px; }} .event {{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px; }}
   .event-head {{ display:flex; justify-content:space-between; gap:12px; align-items:start; }} h2 {{ font-size:18px; margin:0; }} h2 span {{ color:var(--muted); font-size:13px; font-weight:400; }} .event-head p {{ color:var(--muted); font-size:12px; margin:2px 0 0; white-space:nowrap; }}
-  .event-meta {{ display:flex; flex-wrap:wrap; gap:8px 14px; color:var(--muted); font-size:12px; border-bottom:1px solid var(--line); padding:12px 0; margin-bottom:10px; }} table {{ width:100%; border-collapse:collapse; font-size:13px; }} th,td {{ text-align:left; padding:7px 0; border-bottom:1px solid var(--line); vertical-align:top; }} th {{ color:var(--muted); font-weight:500; }} td:last-child {{ color:var(--accent); }}
+  .event-meta {{ display:flex; flex-wrap:wrap; gap:8px 14px; color:var(--muted); font-size:12px; border-bottom:1px solid var(--line); padding:12px 0; margin-bottom:10px; }} table {{ width:100%; border-collapse:collapse; font-size:13px; }} caption {{ text-align:left; color:var(--muted); font-size:12px; padding:0 0 6px; }} th,td {{ text-align:left; padding:7px 8px 7px 0; border-bottom:1px solid var(--line); vertical-align:top; }} th {{ color:var(--muted); font-weight:500; }} td:not(:first-child) {{ color:var(--accent); }}
   .empty {{ color:var(--muted); padding:32px 0; }} footer {{ color:var(--muted); font-size:12px; margin-top:30px; }}
   @media(max-width:600px) {{ main {{ padding:28px 14px; }} .controls {{ width:100%; }} label,select,button {{ width:100%; }} .event-head {{ display:block; }} .event-head p {{ margin-top:8px; }} }}
 </style></head><body><main>
 <header><div><h1><small>Fun Football</small>Market monitor</h1></div>
-<form class="controls" method="get"><label>Competition<select name="sport_key">{options}</select></label><button type="submit">Refresh data</button></form></header>
+<form class="controls" method="get"><label>Competition<select name="sport_key">{options}</select></label><button type="submit">Request latest data</button></form></header>
 <section class="status" aria-live="polite"><strong>{escape(status)}</strong><p>{escape(status_detail)}</p>{error_html}</section>
+<section class="summary" aria-label="Dashboard summary"><div><b>{len(events)}</b><span>event(s)</span></div><div><b>{len(rows)}</b><span>quote(s)</span></div><div><b>{escape(title)}</b><span>competition</span></div></section>
 <section class="events">{''.join(cards) if cards else '<p class="empty">No events available for this selection.</p>'}</section>
 <footer>For practice, research, fun and curiosity. Published prices are shown as observations only; no recommendations or transactions are provided.</footer>
 </main></body></html>"""

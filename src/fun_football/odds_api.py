@@ -19,6 +19,21 @@ from .schema import Event, Market, PriceQuote
 BASE_URL = "https://api.the-odds-api.com/v4"
 
 
+def _country_for_sport_key(sport_key: str) -> str:
+    """Map the provider's competition key to a display country."""
+    if sport_key.startswith("aussierules_") or sport_key.startswith("soccer_australia_"):
+        return "Australia"
+    country_by_key = {
+        "soccer_epl": "England",
+        "soccer_germany_bundesliga": "Germany",
+        "soccer_italy_serie_a": "Italy",
+        "soccer_spain_la_liga": "Spain",
+        "soccer_france_ligue_one": "France",
+        "soccer_usa_mls": "United States",
+    }
+    return country_by_key.get(sport_key, "International")
+
+
 def _load_local_env() -> None:
     """Load simple KEY=value entries from .env without adding a dependency."""
     env_path = Path(".env")
@@ -76,7 +91,7 @@ class TheOddsApiClient:
             event = Event(
                 event_id=event_id,
                 sport="football",
-                country="Australia",
+                country=_country_for_sport_key(sport_key),
                 competition=item.get("sport_title") or sport_key,
                 home_team=item["home_team"],
                 away_team=item["away_team"],
@@ -96,6 +111,7 @@ class TheOddsApiClient:
                         market_type=market_key,
                         source=source,
                         source_market_id=f"{bookmaker_key}:{market_key}",
+                        source_name=bookmaker.get("title") or bookmaker_key,
                     )
                     quote_time = datetime.fromisoformat(
                         (api_market.get("last_update") or bookmaker.get("last_update")
