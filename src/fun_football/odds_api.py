@@ -6,6 +6,7 @@ never included in logs or returned by this module.
 
 import json
 import os
+import time
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -17,6 +18,8 @@ from .schema import Event, Market, PriceQuote
 
 
 BASE_URL = "https://api.the-odds-api.com/v4"
+_ODDS_CACHE: dict[tuple[str, str, str], tuple[float, list[tuple[Event, Market, PriceQuote]]]] = {}
+_CACHE_SECONDS = 60
 
 
 def _country_for_sport_key(sport_key: str) -> str:
@@ -65,22 +68,29 @@ class TheOddsApiClient:
         sport_key: str = "soccer_australia_aleague",
         regions: str = "au",
         markets: str = "h2h",
+        force_refresh: bool = False,
     ) -> list[tuple[Event, Market, PriceQuote]]:
         """Fetch and normalise current odds for one sport key."""
+        cache_key = (sport_key, regions, markets)
+        cached = _ODDS_CACHE.get(cache_key)
+        if cached and not force_refresh and time.monotonic() - cached[0] < _CACHE_SECONDS:
+            return cached[1]
         query = urlencode({"apiKey": self._api_key, "regions": regions, "markets": markets})
         request = Request(
             f"{self._base_url}/sports/{sport_key}/odds/?{query}",
             headers={"Accept": "application/json", "User-Agent": "FunFootball/0.1"},
         )
         try:
-            with urlopen(request, timeout=20) as response:
+            with urlopen(request, timeout=8) as response:
                 payload = json.load(response)
         except HTTPError as exc:
             raise OddsApiError(f"provider returned HTTP {exc.code}") from exc
         except (URLError, TimeoutError) as exc:
             raise OddsApiError("provider request failed") from exc
 
-        return self._normalise(payload, sport_key)
+        records = self._normalise(payload, sport_key)
+        _ODDS_CACHE[cache_key] = (time.monotonic(), records)
+        return records
 
     @staticmethod
     def _normalise(payload: list[dict], sport_key: str) -> list[tuple[Event, Market, PriceQuote]]:

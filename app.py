@@ -23,15 +23,17 @@ def _format_time(value) -> str:
     return value.strftime("%d %b %Y, %H:%M UTC")
 
 
-def _live_rows(sport_key: str):
-    return TheOddsApiClient().get_odds(sport_key=sport_key, regions="au", markets="h2h")
+def _live_rows(sport_key: str, force_refresh: bool = False):
+    return TheOddsApiClient().get_odds(
+        sport_key=sport_key, regions="au", markets="h2h", force_refresh=force_refresh
+    )
 
 
 def _sample_rows():
     return load_market_csv(Path("data/examples/market_quotes.csv"))
 
 
-def _dashboard(sport_key: str, demo: bool = False) -> str:
+def _dashboard(sport_key: str, demo: bool = False, force_refresh: bool = False) -> str:
     title = SPORTS.get(sport_key, sport_key)
     status = "Live API data"
     status_detail = "Read-only request using the Australian bookmaker region."
@@ -42,7 +44,7 @@ def _dashboard(sport_key: str, demo: bool = False) -> str:
         status_detail = "Synthetic records shown explicitly for layout demonstration."
     else:
         try:
-            rows = _live_rows(sport_key)
+            rows = _live_rows(sport_key, force_refresh=force_refresh)
             if not rows:
                 status = "No live data available"
                 status_detail = "The provider returned no current records for this competition."
@@ -87,16 +89,27 @@ def _dashboard(sport_key: str, demo: bool = False) -> str:
                 return "Draw"
             return outcome
 
-        for outcome, prices in sorted(outcomes.items()):
+        def outcome_rank(outcome: str) -> tuple[int, str]:
+            lowered = outcome.casefold()
+            if lowered in {"home", event.home_team.casefold()}:
+                return (0, "")
+            if lowered == "draw":
+                return (1, "")
+            if lowered in {"away", event.away_team.casefold()}:
+                return (2, "")
+            return (3, lowered)
+
+        for outcome, prices in sorted(outcomes.items(), key=lambda item: outcome_rank(item[0])):
             source_prices = "".join(
                 f"<td>{comparison[outcome].get(source, ''):.2f}</td>" if source in comparison[outcome] else "<td>—</td>"
                 for source in source_columns
             )
             is_highlight = largest_spread > 0 and spreads.get(outcome) == largest_spread
+            difference = spreads.get(outcome, Decimal("0"))
             label = f"<strong>{escape(outcome_label(outcome))}</strong>" if is_highlight else escape(outcome_label(outcome))
-            note = f" <small class=\"highlight\">largest observed difference: {largest_spread:.2f}</small>" if is_highlight else ""
-            outcome_rows.append(f"<tr{' class=\"highlight-row\"' if is_highlight else ''}><td>{label}{note}</td>{source_prices}</tr>")
-        headers = "".join(f"<th>{escape(source)}</th>" for source in source_columns)
+            difference_cell = f'<td class="difference">{difference:.2f}</td>'
+            outcome_rows.append(f"<tr{' class=\"highlight-row\"' if is_highlight else ''}><td>{label}</td>{source_prices}{difference_cell}</tr>")
+        headers = "".join(f"<th>{escape(source)}</th>" for source in source_columns) + "<th>Difference</th>"
         cards.append(f"""
         <article class="event">
           <div class="event-head"><h2>{escape(event.home_team)} <span>vs</span> {escape(event.away_team)}</h2>
@@ -123,12 +136,12 @@ def _dashboard(sport_key: str, demo: bool = False) -> str:
   .summary {{ display:flex; gap:10px; flex-wrap:wrap; margin:0 0 22px; }} .summary div {{ min-width:125px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }} .summary b {{ display:block; color:var(--accent); font-size:20px; }} .summary span {{ color:var(--muted); font-size:12px; }}
   .events {{ display:grid; grid-template-columns:1fr; gap:16px; }} .event {{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px; }}
   .event-head {{ display:flex; justify-content:space-between; gap:12px; align-items:start; }} h2 {{ font-size:18px; margin:0; }} h2 span {{ color:var(--muted); font-size:13px; font-weight:400; }} .event-head p {{ color:var(--muted); font-size:12px; margin:2px 0 0; white-space:nowrap; }}
-  .event-meta {{ display:flex; flex-wrap:wrap; gap:8px 14px; color:var(--muted); font-size:12px; border-bottom:1px solid var(--line); padding:12px 0; margin-bottom:10px; }} table {{ width:100%; border-collapse:collapse; font-size:13px; }} caption {{ text-align:left; color:var(--muted); font-size:12px; padding:0 0 6px; }} th,td {{ text-align:left; padding:7px 8px 7px 0; border-bottom:1px solid var(--line); vertical-align:top; }} th {{ color:var(--muted); font-weight:500; }} td:not(:first-child) {{ color:var(--accent); }} .highlight-row td {{ background:rgba(100,214,160,.08); }} .highlight {{ color:var(--warn); font-weight:500; }}
+  .event-meta {{ display:flex; flex-wrap:wrap; gap:8px 14px; color:var(--muted); font-size:12px; border-bottom:1px solid var(--line); padding:12px 0; margin-bottom:10px; }} table {{ width:100%; border-collapse:collapse; font-size:13px; }} caption {{ text-align:left; color:var(--muted); font-size:12px; padding:0 0 6px; }} th,td {{ text-align:left; padding:7px 8px 7px 0; border-bottom:1px solid var(--line); vertical-align:top; }} th {{ color:var(--muted); font-weight:500; }} td:not(:first-child) {{ color:var(--accent); }} .difference {{ color:var(--warn) !important; font-weight:650; }} .highlight-row td {{ background:rgba(100,214,160,.08); }}
   .empty {{ color:var(--muted); padding:32px 0; }} footer {{ color:var(--muted); font-size:12px; margin-top:30px; }}
   @media(max-width:600px) {{ main {{ padding:28px 14px; }} .controls {{ width:100%; }} label,select,button {{ width:100%; }} .event-head {{ display:block; }} .event-head p {{ margin-top:8px; }} }}
 </style></head><body><main>
 <header><div><h1><small>Fun Football</small>Market monitor</h1></div>
-<form class="controls" method="get"><label>Competition<select name="sport_key">{options}</select></label><button type="submit">Request latest data</button></form></header>
+<form class="controls" method="get"><input type="hidden" name="refresh" value="1"><label>Competition<select name="sport_key">{options}</select></label><button type="submit">Request latest data</button></form></header>
 <section class="status" aria-live="polite"><strong>{escape(status)}</strong><p>{escape(status_detail)}</p>{error_html}</section>
 <section class="summary" aria-label="Dashboard summary"><div><b>{len(events)}</b><span>event(s)</span></div><div><b>{len(rows)}</b><span>quote(s)</span></div><div><b>{escape(title)}</b><span>competition</span></div></section>
 <section class="events">{''.join(cards) if cards else '<p class="empty">No events available for this selection.</p>'}</section>
@@ -143,7 +156,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if sport_key not in SPORTS:
             sport_key = "soccer_epl"
         demo = query.get("demo", ["0"])[0] == "1"
-        body = _dashboard(sport_key, demo=demo).encode("utf-8")
+        force_refresh = query.get("refresh", ["0"])[0] == "1"
+        body = _dashboard(sport_key, demo=demo, force_refresh=force_refresh).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
