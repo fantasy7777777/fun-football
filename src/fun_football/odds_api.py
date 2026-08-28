@@ -7,6 +7,7 @@ never included in logs or returned by this module.
 import json
 import os
 import time
+from collections import Counter, defaultdict
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -88,12 +89,15 @@ class TheOddsApiClient:
         except (URLError, TimeoutError) as exc:
             raise OddsApiError("provider request failed") from exc
 
-        records = self._normalise(payload, sport_key)
+        requested_markets = {market.strip() for market in markets.split(",") if market.strip()}
+        records = self._normalise(payload, sport_key, requested_markets)
         _ODDS_CACHE[cache_key] = (time.monotonic(), records)
         return records
 
     @staticmethod
-    def _normalise(payload: list[dict], sport_key: str) -> list[tuple[Event, Market, PriceQuote]]:
+    def _normalise(
+        payload: list[dict], sport_key: str, requested_markets: set[str] | None = None
+    ) -> list[tuple[Event, Market, PriceQuote]]:
         records: list[tuple[Event, Market, PriceQuote]] = []
         for item in payload:
             event_id = str(item["id"])
@@ -110,18 +114,32 @@ class TheOddsApiClient:
                 source_event_id=event_id,
             )
             observed_at = datetime.now().astimezone()
-            for bookmaker in item.get("bookmakers", []):
+            bookmakers = item.get("bookmakers", [])
+            bookmaker_counts = Counter(b.get("key") for b in bookmakers)
+            bookmaker_variants = defaultdict(int)
+            for bookmaker in bookmakers:
                 bookmaker_key = bookmaker["key"]
+                bookmaker_variants[bookmaker_key] += 1
+                variant_number = bookmaker_variants[bookmaker_key]
+                base_source_name = bookmaker.get("title") or bookmaker_key
+                market_counts = Counter((bookmaker_key, m.get("key")) for m in bookmaker.get("markets", []))
+                market_variants = defaultdict(int)
                 for api_market in bookmaker.get("markets", []):
                     market_key = api_market["key"]
-                    market_id = f"{event_id}:{bookmaker_key}:{market_key}"
+                    if requested_markets and market_key not in requested_markets:
+                        continue
+                    market_variants[market_key] += 1
+                    market_variant = market_variants[market_key]
+                    duplicate_group = bookmaker_counts[bookmaker_key] > 1 or market_counts[(bookmaker_key, market_key)] > 1
+                    source_name = base_source_name if not duplicate_group else f"{base_source_name} #{variant_number}.{market_variant}"
+                    market_id = f"{event_id}:{bookmaker_key}:{variant_number}:{market_key}:{market_variant}"
                     market = Market(
                         market_id=market_id,
                         event_id=event_id,
                         market_type=market_key,
                         source=source,
-                        source_market_id=f"{bookmaker_key}:{market_key}",
-                        source_name=bookmaker.get("title") or bookmaker_key,
+                        source_market_id=f"{bookmaker_key}:{variant_number}:{market_key}:{market_variant}",
+                        source_name=source_name,
                     )
                     quote_time = datetime.fromisoformat(
                         (api_market.get("last_update") or bookmaker.get("last_update")

@@ -9,3 +9,4 @@ Suggested documents:
 - `architecture.md` — system structure and components
 - `security-model.md` — lightweight security assumptions and controls
 - `development-notes.md` — implementation notes and decisions
+- `iteration-log.md` — problems, causes, solutions, and lessons by iteration
