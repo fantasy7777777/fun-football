@@ -2,7 +2,7 @@
 
 ## Conclusion
 
-Fun Football is feasible as a small research and software demonstration. The technically difficult part is not normalising prices; it is obtaining a stable, permitted, sufficiently complete data feed and preserving source provenance.
+Fun Football is feasible as a small research and software demonstration. The central feature is live market-data acquisition; the technically difficult part is obtaining a stable, permitted, sufficiently complete real-time feed and preserving source provenance. The CSV importer is only a development scaffold and is not a substitute for the live collector.
 
 ## Acquisition options
 
@@ -12,6 +12,17 @@ Fun Football is feasible as a small research and software demonstration. The tec
 | Direct website automation | Technically possible, permission uncertain | Do not use without explicit permission and a terms review |
 | Manual CSV entry | High for a small demonstration | Use as the first fallback and test fixture source |
 | Synthetic/mock data | Very high | Use for development before live credentials |
+
+## Live-data decision
+
+The application should expose one acquisition interface with replaceable adapters:
+
+- `MockProvider` for automated development and tests.
+- `ManualCsvProvider` for a small offline demonstration.
+- `ApiProvider` for a licensed real-time feed.
+- `WebCollector` only if the target site expressly permits automated collection.
+
+The project should not call itself a real-time scraper until a permitted live adapter has been implemented and tested. If no permitted live source is available, the honest description is a football market-data analysis prototype using manual or synthetic observations.
 
 ## API-first decision
 
