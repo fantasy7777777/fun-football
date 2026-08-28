@@ -7,4 +7,5 @@ Suggested documents:
 - `project-overview.md` — project purpose and scope
 - `data-sources.md` — source details, permissions, and data fields
 - `architecture.md` — system structure and components
+- `security-model.md` — lightweight security assumptions and controls
 - `development-notes.md` — implementation notes and decisions
