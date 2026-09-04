@@ -14,7 +14,9 @@ The project does not accept transactions, operate accounts, provide recommendati
 
 ## Status
 
-The project is in its initial setup phase. The first implementation milestone is a common data model for football events and published market prices.
+The project has a presentation-ready local dashboard supporting live source comparison for selected competitions and markets, including Win/Draw/Loss and Over/Under 2.5 goals. The scenario page is theoretical and uses editable values rather than championship outright prices.
+
+See [`docs/release-notes.md`](docs/release-notes.md) for milestone details and [`docs/security-model.md`](docs/security-model.md) for API credential handling.
 
 ## Responsible use
 
